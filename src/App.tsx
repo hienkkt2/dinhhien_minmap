@@ -59,7 +59,40 @@ export default function App() {
   };
 
   const handleProcess = async () => {
-    if (!input.trim()) return;
+    // If no input, create a default blank mind map
+    if (!input.trim()) {
+      const defaultData: StructuredContent = {
+        title: "Sơ đồ mới",
+        sections: [
+          {
+            heading: "Bắt đầu",
+            content: "Đây là sơ đồ tư duy mới của bạn. Bạn có thể thêm các nhánh con bằng cách nhấn vào nút + trên các nút."
+          }
+        ],
+        mindMapData: {
+          id: "root-" + Math.random().toString(36).substr(2, 9),
+          label: "Sơ đồ mới",
+          children: [
+            {
+              id: "child-" + Math.random().toString(36).substr(2, 9),
+              label: "Ý tưởng chính 1",
+              children: []
+            }
+          ]
+        }
+      };
+      
+      setResult(defaultData);
+      
+      // Add to history
+      const newItem: HistoryItem = {
+        id: Math.random().toString(36).substr(2, 9),
+        timestamp: Date.now(),
+        data: defaultData
+      };
+      setHistory(prev => [newItem, ...prev].slice(0, 20));
+      return;
+    }
     
     // Check if we have an API key (either in state or injected by env)
     const effectiveApiKey = apiKey || (typeof process !== 'undefined' ? process.env.GEMINI_API_KEY : '');
@@ -302,7 +335,7 @@ export default function App() {
                     />
                     <button
                       onClick={handleProcess}
-                      disabled={loading || !input.trim()}
+                      disabled={loading}
                       className="w-full bg-blue-600 text-white py-3 rounded-xl font-medium flex items-center justify-center gap-2 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-blue-100"
                     >
                       {loading ? (
@@ -310,7 +343,7 @@ export default function App() {
                       ) : (
                         <Send className="w-5 h-5" />
                       )}
-                      {loading ? 'Đang xử lý...' : 'Tạo Sơ Đồ Tư Duy'}
+                      {loading ? 'Đang xử lý...' : (input.trim() ? 'Tạo Sơ Đồ Tư Duy' : 'Tạo Sơ Đồ Trống')}
                     </button>
                   </div>
                 </div>
