@@ -3,11 +3,12 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   Brain, FileText, Layout, Send, Loader2, ChevronRight, Download, 
   Share2, Key, Eye, EyeOff, PanelLeftClose, PanelLeftOpen, 
-  History, Settings, Plus, Trash2, Clock, Save, X
+  History, Settings, Plus, Trash2, Clock, Save, X, FileUp
 } from 'lucide-react';
 import { processContent, StructuredContent } from './services/geminiService';
 import MindMap from './components/MindMap';
 import Markdown from 'react-markdown';
+import * as mammoth from 'mammoth';
 
 interface HistoryItem {
   id: string;
@@ -26,6 +27,7 @@ export default function App() {
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [isApiKeySaved, setIsApiKeySaved] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
 
   // Load data from localStorage on mount
   useEffect(() => {
@@ -58,9 +60,25 @@ export default function App() {
 
   const handleProcess = async () => {
     if (!input.trim()) return;
+    
+    // Check if we have an API key (either in state or injected by env)
+    const effectiveApiKey = apiKey || (typeof process !== 'undefined' ? process.env.GEMINI_API_KEY : '');
+    
+    if (!effectiveApiKey || effectiveApiKey === 'undefined') {
+      setIsConfigModalOpen(true);
+      return;
+    }
+
     setLoading(true);
     try {
       const data = await processContent(input, apiKey);
+      console.log("AI Result:", data);
+      
+      if (!data.mindMapData) {
+        console.error("AI response missing mindMapData");
+        throw new Error("AI không tạo được dữ liệu sơ đồ tư duy. Vui lòng thử lại.");
+      }
+      
       setResult(data);
       
       // Add to history
@@ -71,8 +89,18 @@ export default function App() {
       };
       setHistory(prev => [newItem, ...prev].slice(0, 20)); // Keep last 20 items
     } catch (error: any) {
-      console.error(error);
-      alert(error.message || 'Có lỗi xảy ra khi xử lý nội dung. Vui lòng kiểm tra API Key và thử lại.');
+      console.error("Processing error:", error);
+      let errorMsg = 'Có lỗi xảy ra khi xử lý nội dung.';
+      
+      if (error.message?.includes('API_KEY_INVALID') || error.message?.includes('invalid API key')) {
+        errorMsg = 'API Key không hợp lệ. Vui lòng kiểm tra lại trong mục Cấu hình API.';
+      } else if (error.message?.includes('quota') || error.message?.includes('429')) {
+        errorMsg = 'Hết hạn mức API (Quota exceeded). Vui lòng thử lại sau hoặc dùng Key khác.';
+      } else if (error.message) {
+        errorMsg = error.message;
+      }
+      
+      alert(errorMsg);
     } finally {
       setLoading(false);
     }
@@ -92,6 +120,45 @@ export default function App() {
   const clearAllHistory = () => {
     if (confirm("Bạn có chắc chắn muốn xóa toàn bộ lịch sử?")) {
       setHistory([]);
+    }
+  };
+
+  const exportToJson = () => {
+    if (!result) return;
+    const dataStr = JSON.stringify(result, null, 2);
+    const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+    const exportFileDefaultName = `${result.title.replace(/\s+/g, '_')}_mindmap.json`;
+    const linkElement = document.createElement('a');
+    linkElement.setAttribute('href', dataUri);
+    linkElement.setAttribute('download', exportFileDefaultName);
+    linkElement.click();
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    try {
+      const extension = file.name.split('.').pop()?.toLowerCase();
+      
+      if (extension === 'docx' || extension === 'doc') {
+        const arrayBuffer = await file.arrayBuffer();
+        const result = await mammoth.extractRawText({ arrayBuffer });
+        setInput(result.value);
+      } else if (extension === 'txt' || extension === 'html' || extension === 'htm') {
+        const text = await file.text();
+        setInput(text);
+      } else {
+        alert("Chỉ hỗ trợ file .docx, .doc, .txt hoặc .html");
+      }
+    } catch (error) {
+      console.error("File upload error:", error);
+      alert("Có lỗi xảy ra khi đọc file. Vui lòng thử lại.");
+    } finally {
+      setIsUploading(false);
+      // Reset input value to allow uploading the same file again
+      e.target.value = '';
     }
   };
 
@@ -210,14 +277,27 @@ export default function App() {
 
                   {/* Input Section */}
                   <div className="space-y-4 pt-4 border-t border-slate-100">
-                    <div className="flex items-center gap-2 px-2">
-                      <FileText className="w-4 h-4 text-blue-600" />
-                      <h2 className="text-xs font-bold uppercase tracking-wider">Nội dung đầu vào</h2>
+                    <div className="flex items-center justify-between px-2">
+                      <div className="flex items-center gap-2">
+                        <FileText className="w-4 h-4 text-blue-600" />
+                        <h2 className="text-xs font-bold uppercase tracking-wider">Nội dung đầu vào</h2>
+                      </div>
+                      <label className="flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg cursor-pointer transition-colors">
+                        {isUploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileUp className="w-3 h-3" />}
+                        {isUploading ? 'Đang đọc...' : 'Tải file (.doc, .txt, .html)'}
+                        <input 
+                          type="file" 
+                          className="hidden" 
+                          accept=".doc,.docx,.txt,.html,.htm"
+                          onChange={handleFileUpload}
+                          disabled={isUploading}
+                        />
+                      </label>
                     </div>
                     <textarea
                       value={input}
                       onChange={(e) => setInput(e.target.value)}
-                      placeholder="Dán nội dung văn bản của bạn vào đây..."
+                      placeholder="Dán nội dung văn bản hoặc tải file Word/Text lên..."
                       className="w-full h-[300px] p-4 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none resize-none text-sm leading-relaxed"
                     />
                     <button
@@ -295,9 +375,12 @@ export default function App() {
                     </button>
                   </div>
                   <div className="flex items-center gap-2">
-                    <button className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 rounded-xl transition-colors border border-slate-200">
+                    <button 
+                      onClick={exportToJson}
+                      className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 rounded-xl transition-colors border border-slate-200"
+                    >
                       <Download className="w-4 h-4" />
-                      Xuất file
+                      Xuất JSON
                     </button>
                   </div>
                 </div>

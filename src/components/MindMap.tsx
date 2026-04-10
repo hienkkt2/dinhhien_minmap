@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as d3 from 'd3';
 import { MindMapNode } from '../services/geminiService';
-import { Plus, Trash2, Edit2, X, Check, Circle, Square, BoxSelect } from 'lucide-react';
+import { Plus, Trash2, Edit2, X, Check, Circle, Square, BoxSelect, ChevronDown, ChevronRight, Maximize2, RefreshCw } from 'lucide-react';
 
 interface MindMapProps {
   data: MindMapNode;
@@ -16,26 +16,63 @@ const MindMap: React.FC<MindMapProps> = ({ data, onUpdate }) => {
   const [editValue, setEditValue] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [nodeStyle, setNodeStyle] = useState<NodeStyle>('rounded');
+  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
+
+  // Log data for debugging
+  useEffect(() => {
+    console.log("MindMap Data:", data);
+    if (!data) {
+      console.warn("MindMap received null or undefined data");
+    }
+  }, [data]);
+
+  const toggleCollapse = (id: string) => {
+    setCollapsedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   useEffect(() => {
     if (!data || !svgRef.current) return;
 
-    const width = 800;
-    const height = 600;
-    const margin = { top: 40, right: 160, bottom: 40, left: 160 };
+    try {
+      const width = 800;
+      const height = 600;
+      const margin = { top: 40, right: 200, bottom: 40, left: 200 };
 
-    const svg = d3.select(svgRef.current);
-    svg.selectAll("*").remove();
+      const svg = d3.select(svgRef.current);
+      svg.selectAll("*").remove();
 
-    const g = svg.append("g")
-      .attr("transform", `translate(${margin.left},${margin.top})`);
+      const g = svg.append("g")
+        .attr("transform", `translate(${margin.left},${margin.top})`);
 
-    const tree = d3.tree<MindMapNode>().size([height - margin.top - margin.bottom, width - margin.left - margin.right]);
+      // Use nodeSize instead of size for more consistent spacing in deep hierarchies
+      const tree = d3.tree<MindMapNode>().nodeSize([60, 250]);
 
-    const root = d3.hierarchy(data);
+      // Create hierarchy and handle collapsing
+      const root = d3.hierarchy(data);
+    
+    // Function to recursively hide children if parent is collapsed
+    const applyCollapse = (d: d3.HierarchyNode<MindMapNode>) => {
+      if (collapsedIds.has(d.data.id)) {
+        (d as any)._children = d.children;
+        d.children = undefined;
+      } else if ((d as any)._children) {
+        d.children = (d as any)._children;
+        (d as any)._children = undefined;
+      }
+      if (d.children) {
+        d.children.forEach(applyCollapse);
+      }
+    };
+    
+    applyCollapse(root);
     tree(root);
 
-    // Links
+    // 1. Links
     g.selectAll(".link")
       .data(root.links())
       .enter().append("path")
@@ -47,7 +84,7 @@ const MindMap: React.FC<MindMapProps> = ({ data, onUpdate }) => {
         .x(d => d.y)
         .y(d => d.x) as any);
 
-    // Nodes
+    // 2. Nodes
     const node = g.selectAll(".node")
       .data(root.descendants())
       .enter().append("g")
@@ -61,41 +98,7 @@ const MindMap: React.FC<MindMapProps> = ({ data, onUpdate }) => {
         setIsEditing(false);
       });
 
-    // Drag behavior
-    const drag = d3.drag<SVGGElement, d3.HierarchyPointNode<MindMapNode>>()
-      .on("start", function() {
-        d3.select(this).style("cursor", "grabbing");
-      })
-      .on("drag", function(event, d) {
-        const dx = event.dx;
-        const dy = event.dy;
-        
-        // Move the node and all its descendants for a more natural mind map feel
-        d.descendants().forEach(node => {
-          node.x += dy;
-          node.y += dx;
-        });
-        
-        // Update all node positions
-        g.selectAll(".node")
-          .attr("transform", (d: any) => `translate(${d.y},${d.x})`);
-        
-        // Update all links
-        updateLinks();
-      })
-      .on("end", function() {
-        d3.select(this).style("cursor", "grab");
-      });
-
-    node.call(drag as any);
-
-    function updateLinks() {
-      g.selectAll(".link")
-        .attr("d", d3.linkHorizontal<any, any>()
-          .x(d => d.y)
-          .y(d => d.x) as any);
-    }
-
+    // 3. Style-specific rendering
     if (nodeStyle === 'circle') {
       node.append("circle")
         .attr("r", 10)
@@ -115,18 +118,17 @@ const MindMap: React.FC<MindMapProps> = ({ data, onUpdate }) => {
         .attr("stroke", "white")
         .attr("stroke-width", 3);
     } else {
-      // Rect or Rounded with Text Wrapping
       node.each(function(d) {
         const el = d3.select(this);
-        const maxWidth = 150; // Maximum width for a node
-        const words = d.data.label.split(/\s+/);
+        const label = d.data.label || "Không có nhãn";
+        const maxWidth = 150;
+        const words = label.split(/\s+/);
         const lines: string[] = [];
         let currentLine: string[] = [];
 
-        // Simple wrapping logic
         words.forEach(word => {
           currentLine.push(word);
-          if (currentLine.join(" ").length * 7 > maxWidth) { // Rough estimate of width
+          if (currentLine.join(" ").length * 6 > maxWidth) {
             if (currentLine.length > 1) {
               const lastWord = currentLine.pop();
               lines.push(currentLine.join(" "));
@@ -139,6 +141,7 @@ const MindMap: React.FC<MindMapProps> = ({ data, onUpdate }) => {
         });
         if (currentLine.length > 0) lines.push(currentLine.join(" "));
 
+        const rect = el.append("rect");
         const text = el.append("text")
           .attr("text-anchor", "middle")
           .attr("font-size", "11px")
@@ -155,13 +158,12 @@ const MindMap: React.FC<MindMapProps> = ({ data, onUpdate }) => {
         const bbox = (text.node() as SVGTextElement).getBBox();
         const paddingX = 12;
         const paddingY = 8;
-        const rectWidth = bbox.width + paddingX * 2;
-        const rectHeight = bbox.height + paddingY * 2;
+        const rectWidth = Math.max(bbox.width + paddingX * 2, 40);
+        const rectHeight = Math.max(bbox.height + paddingY * 2, 30);
 
-        // Re-center text vertically based on its height
         text.attr("y", -bbox.height / 2 + 8);
 
-        el.insert("rect", "text")
+        rect
           .attr("x", -rectWidth / 2)
           .attr("y", -rectHeight / 2)
           .attr("width", rectWidth)
@@ -170,19 +172,82 @@ const MindMap: React.FC<MindMapProps> = ({ data, onUpdate }) => {
           .attr("ry", nodeStyle === 'rounded' ? 8 : 0)
           .attr("fill", d.depth === 0 ? "#3b82f6" : "white")
           .attr("stroke", selectedNode?.id === d.data.id ? "#ef4444" : (d.depth === 0 ? "#2563eb" : "#e2e8f0"))
-          .attr("stroke-width", selectedNode?.id === d.data.id ? 2 : 1)
-          .attr("class", "shadow-sm");
+          .attr("stroke-width", selectedNode?.id === d.data.id ? 2 : 1);
       });
     }
 
+    function updateLinks() {
+      g.selectAll(".link")
+        .attr("d", d3.linkHorizontal<any, any>()
+          .x(d => d.y)
+          .y(d => d.x) as any);
+    }
+
+    // 4. Drag behavior
+    const drag = d3.drag<SVGGElement, d3.HierarchyPointNode<MindMapNode>>()
+      .on("start", function() {
+        d3.select(this).style("cursor", "grabbing");
+      })
+      .on("drag", function(event, d) {
+        const dx = event.dx;
+        const dy = event.dy;
+        d.descendants().forEach(node => {
+          node.x += dy;
+          node.y += dx;
+        });
+        g.selectAll(".node").attr("transform", (d: any) => `translate(${d.y},${d.x})`);
+        updateLinks();
+      })
+      .on("end", function() {
+        d3.select(this).style("cursor", "grab");
+      });
+
+    node.call(drag as any);
+
+    // 5. Collapse/Expand Toggle
+    node.each(function(d) {
+      const hasChildren = (d.data.children && d.data.children.length > 0) || (d as any)._children;
+      if (!hasChildren) return;
+
+      const el = d3.select(this);
+      const isCollapsed = collapsedIds.has(d.data.id);
+      
+      const toggleG = el.append("g")
+        .attr("class", "collapse-toggle")
+        .attr("transform", `translate(0, 25)`)
+        .style("cursor", "pointer")
+        .on("click", (event) => {
+          event.stopPropagation();
+          toggleCollapse(d.data.id);
+        });
+
+      toggleG.append("circle")
+        .attr("r", 8)
+        .attr("fill", isCollapsed ? "#3b82f6" : "#f1f5f9")
+        .attr("stroke", "#3b82f6")
+        .attr("stroke-width", 1);
+
+      toggleG.append("text")
+        .attr("text-anchor", "middle")
+        .attr("dy", ".35em")
+        .attr("font-size", "10px")
+        .attr("font-weight", "bold")
+        .attr("fill", isCollapsed ? "white" : "#3b82f6")
+        .text(isCollapsed ? "+" : "-");
+    });
+
     // Zoom behavior
     const zoom = d3.zoom<SVGSVGElement, unknown>()
-      .scaleExtent([0.3, 3])
+      .scaleExtent([0.1, 5])
       .on("zoom", (event) => {
         g.attr("transform", event.transform);
       });
 
     svg.call(zoom as any);
+
+    // Initialize zoom to match initial transform
+    const initialTransform = d3.zoomIdentity.translate(150, 300).scale(0.8);
+    svg.call(zoom.transform as any, initialTransform);
 
     // Click on background to deselect
     svg.on("click", () => {
@@ -190,7 +255,27 @@ const MindMap: React.FC<MindMapProps> = ({ data, onUpdate }) => {
       setIsEditing(false);
     });
 
-  }, [data, selectedNode, nodeStyle]);
+      return () => {
+        svg.on(".zoom", null);
+        svg.on("click", null);
+      };
+    } catch (error) {
+      console.error("D3 Rendering Error:", error);
+    }
+  }, [data, selectedNode, nodeStyle, collapsedIds]);
+
+  const handleCenterView = () => {
+    if (!svgRef.current) return;
+    const svg = d3.select(svgRef.current);
+    const zoom = d3.zoom<SVGSVGElement, unknown>()
+      .scaleExtent([0.1, 5])
+      .on("zoom", (event) => {
+        d3.select(svgRef.current).select("g").attr("transform", event.transform);
+      });
+    
+    const initialTransform = d3.zoomIdentity.translate(160, 300).scale(0.8);
+    svg.transition().duration(750).call(zoom.transform as any, initialTransform);
+  };
 
   const updateNodeInTree = (root: MindMapNode, targetId: string, updater: (node: MindMapNode) => MindMapNode | null): MindMapNode | null => {
     if (root.id === targetId) {
@@ -242,33 +327,45 @@ const MindMap: React.FC<MindMapProps> = ({ data, onUpdate }) => {
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Style Selector */}
-      <div className="flex items-center gap-4 bg-white p-2 rounded-xl border border-slate-200 shadow-sm self-start">
-        <span className="text-xs font-semibold text-slate-400 px-2 uppercase tracking-wider">Hình khối:</span>
-        <div className="flex gap-1">
+      {/* Style Selector & Controls */}
+      <div className="flex flex-wrap items-center gap-4 bg-white p-2 rounded-xl border border-slate-200 shadow-sm self-start">
+        <div className="flex items-center gap-2 border-r border-slate-100 pr-4">
+          <span className="text-xs font-semibold text-slate-400 px-2 uppercase tracking-wider">Hình khối:</span>
+          <div className="flex gap-1">
+            <button
+              onClick={() => setNodeStyle('circle')}
+              className={`p-2 rounded-lg transition-all flex items-center gap-2 text-xs font-medium ${
+                nodeStyle === 'circle' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'
+              }`}
+            >
+              <Circle className="w-4 h-4" /> Tròn
+            </button>
+            <button
+              onClick={() => setNodeStyle('rect')}
+              className={`p-2 rounded-lg transition-all flex items-center gap-2 text-xs font-medium ${
+                nodeStyle === 'rect' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'
+              }`}
+            >
+              <Square className="w-4 h-4" /> Vuông
+            </button>
+            <button
+              onClick={() => setNodeStyle('rounded')}
+              className={`p-2 rounded-lg transition-all flex items-center gap-2 text-xs font-medium ${
+                nodeStyle === 'rounded' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'
+              }`}
+            >
+              <BoxSelect className="w-4 h-4" /> Bo góc
+            </button>
+          </div>
+        </div>
+        
+        <div className="flex items-center gap-2">
           <button
-            onClick={() => setNodeStyle('circle')}
-            className={`p-2 rounded-lg transition-all flex items-center gap-2 text-xs font-medium ${
-              nodeStyle === 'circle' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'
-            }`}
+            onClick={handleCenterView}
+            className="p-2 rounded-lg transition-all flex items-center gap-2 text-xs font-medium text-slate-500 hover:bg-slate-50"
+            title="Căn giữa sơ đồ"
           >
-            <Circle className="w-4 h-4" /> Tròn
-          </button>
-          <button
-            onClick={() => setNodeStyle('rect')}
-            className={`p-2 rounded-lg transition-all flex items-center gap-2 text-xs font-medium ${
-              nodeStyle === 'rect' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'
-            }`}
-          >
-            <Square className="w-4 h-4" /> Vuông
-          </button>
-          <button
-            onClick={() => setNodeStyle('rounded')}
-            className={`p-2 rounded-lg transition-all flex items-center gap-2 text-xs font-medium ${
-              nodeStyle === 'rounded' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'
-            }`}
-          >
-            <BoxSelect className="w-4 h-4" /> Bo góc
+            <Maximize2 className="w-4 h-4" /> Căn giữa
           </button>
         </div>
       </div>
