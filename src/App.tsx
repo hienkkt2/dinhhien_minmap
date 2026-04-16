@@ -30,6 +30,7 @@ export default function App() {
   const [isUploading, setIsUploading] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [tempTitle, setTempTitle] = useState('');
+  const [activeHistoryId, setActiveHistoryId] = useState<string | null>(null);
 
   // Load data from localStorage on mount
   useEffect(() => {
@@ -39,10 +40,12 @@ export default function App() {
       setIsApiKeySaved(true);
     }
 
+    let loadedHistory: HistoryItem[] = [];
     const savedHistory = localStorage.getItem('mindmap_history');
     if (savedHistory) {
       try {
-        setHistory(JSON.parse(savedHistory));
+        loadedHistory = JSON.parse(savedHistory);
+        setHistory(loadedHistory);
       } catch (e) {
         console.error("Failed to load history", e);
       }
@@ -51,7 +54,14 @@ export default function App() {
     const savedCurrentResult = localStorage.getItem('current_mindmap');
     if (savedCurrentResult) {
       try {
-        setResult(JSON.parse(savedCurrentResult));
+        const parsed = JSON.parse(savedCurrentResult);
+        setResult(parsed);
+        // Try to find the ID in the freshly loaded history
+        const historyItem = loadedHistory.find(h => 
+          h.data.title === parsed.title || 
+          (h.data.mindMapData && parsed.mindMapData && h.data.mindMapData.id === parsed.mindMapData.id)
+        );
+        if (historyItem) setActiveHistoryId(historyItem.id);
       } catch (e) {
         console.error("Failed to load current mindmap", e);
       }
@@ -68,25 +78,49 @@ export default function App() {
     if (result) {
       localStorage.setItem('current_mindmap', JSON.stringify(result));
       
-      // Also update history if this result exists in history
-      setHistory(prev => {
-        const index = prev.findIndex(item => item.data.title === result.title);
-        if (index !== -1) {
-          const newHistory = [...prev];
-          newHistory[index] = { ...newHistory[index], data: result, timestamp: Date.now() };
-          return newHistory;
-        }
-        return prev;
-      });
+      // Also update history if we have an active ID
+      if (activeHistoryId) {
+        setHistory(prev => {
+          const index = prev.findIndex(item => item.id === activeHistoryId);
+          if (index !== -1) {
+            const newHistory = [...prev];
+            newHistory[index] = { ...newHistory[index], data: result, timestamp: Date.now() };
+            return newHistory;
+          }
+          return prev;
+        });
+      }
     } else {
       localStorage.removeItem('current_mindmap');
     }
-  }, [result]);
+  }, [result, activeHistoryId]);
 
   const handleApiKeyChange = (val: string) => {
     setApiKey(val);
     localStorage.setItem('user_gemini_api_key', val);
     setIsApiKeySaved(!!val);
+  };
+
+  const handleSaveToHistory = () => {
+    if (!result) return;
+    
+    // If not already in history, add it
+    if (!activeHistoryId) {
+      const newId = Math.random().toString(36).substr(2, 9);
+      const newItem: HistoryItem = {
+        id: newId,
+        timestamp: Date.now(),
+        data: result
+      };
+      setHistory(prev => [newItem, ...prev].slice(0, 20));
+      setActiveHistoryId(newId);
+    }
+    
+    // Switch to history tab (in sidebar)
+    setIsSidebarOpen(true);
+    // We don't have a separate tab for history in the main content, 
+    // but we can highlight it in the sidebar.
+    // For now, let's just make sure the sidebar is open so they see it.
   };
 
   const handleProcess = async () => {
@@ -116,12 +150,14 @@ export default function App() {
       setResult(defaultData);
       
       // Add to history
+      const newId = Math.random().toString(36).substr(2, 9);
       const newItem: HistoryItem = {
-        id: Math.random().toString(36).substr(2, 9),
+        id: newId,
         timestamp: Date.now(),
         data: defaultData
       };
       setHistory(prev => [newItem, ...prev].slice(0, 20));
+      setActiveHistoryId(newId);
       return;
     }
     
@@ -146,12 +182,14 @@ export default function App() {
       setResult(data);
       
       // Add to history
+      const newId = Math.random().toString(36).substr(2, 9);
       const newItem: HistoryItem = {
-        id: Math.random().toString(36).substr(2, 9),
+        id: newId,
         timestamp: Date.now(),
         data: data
       };
       setHistory(prev => [newItem, ...prev].slice(0, 20)); // Keep last 20 items
+      setActiveHistoryId(newId);
     } catch (error: any) {
       console.error("Processing error:", error);
       let errorMsg = 'Có lỗi xảy ra khi xử lý nội dung.';
@@ -172,6 +210,7 @@ export default function App() {
 
   const loadFromHistory = (item: HistoryItem) => {
     setResult(item.data);
+    setActiveHistoryId(item.id);
     setActiveTab('mindmap');
     if (window.innerWidth < 1024) setIsSidebarOpen(false);
   };
@@ -179,6 +218,9 @@ export default function App() {
   const deleteHistoryItem = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     setHistory(prev => prev.filter(item => item.id !== id));
+    if (activeHistoryId === id) {
+      setActiveHistoryId(null);
+    }
   };
 
   const clearAllHistory = () => {
@@ -459,6 +501,13 @@ export default function App() {
                     </button>
                   </div>
                   <div className="flex items-center gap-2">
+                    <button 
+                      onClick={handleSaveToHistory}
+                      className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-green-600 hover:bg-green-700 rounded-xl transition-colors shadow-sm shadow-green-100"
+                    >
+                      <Save className="w-4 h-4" />
+                      Lưu vào Lịch sử
+                    </button>
                     <button 
                       onClick={exportToJson}
                       className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 rounded-xl transition-colors border border-slate-200"
