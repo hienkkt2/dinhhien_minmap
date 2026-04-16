@@ -248,7 +248,41 @@ export default function App() {
     try {
       const extension = file.name.split('.').pop()?.toLowerCase();
       
-      if (extension === 'docx' || extension === 'doc') {
+      if (extension === 'json') {
+        const text = await file.text();
+        try {
+          const parsed = JSON.parse(text);
+          if (parsed.mindMapData && parsed.title) {
+            setResult(parsed);
+            setActiveTab('mindmap');
+            
+            // Add to history if not already there
+            const historyItem = history.find(h => 
+              h.data.title === parsed.title || 
+              (h.data.mindMapData && parsed.mindMapData && h.data.mindMapData.id === parsed.mindMapData.id)
+            );
+            
+            if (!historyItem) {
+              const newId = Math.random().toString(36).substr(2, 9);
+              const newItem: HistoryItem = {
+                id: newId,
+                timestamp: Date.now(),
+                data: parsed
+              };
+              setHistory(prev => [newItem, ...prev].slice(0, 20));
+              setActiveHistoryId(newId);
+            } else {
+              setActiveHistoryId(historyItem.id);
+            }
+            
+            if (window.innerWidth < 1024) setIsSidebarOpen(false);
+          } else {
+            alert("File JSON không đúng định dạng sơ đồ tư duy.");
+          }
+        } catch (e) {
+          alert("Lỗi khi đọc file JSON. Vui lòng kiểm tra lại.");
+        }
+      } else if (extension === 'docx' || extension === 'doc') {
         const arrayBuffer = await file.arrayBuffer();
         const result = await mammoth.extractRawText({ arrayBuffer });
         setInput(result.value);
@@ -410,11 +444,11 @@ export default function App() {
                       </div>
                       <label className="flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg cursor-pointer transition-colors">
                         {isUploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <FileUp className="w-3 h-3" />}
-                        {isUploading ? 'Đang đọc...' : 'Tải file (.doc, .txt, .html)'}
+                        {isUploading ? 'Đang đọc...' : 'Tải file (.doc, .txt, .html, .json)'}
                         <input 
                           type="file" 
                           className="hidden" 
-                          accept=".doc,.docx,.txt,.html,.htm"
+                          accept=".doc,.docx,.txt,.html,.htm,.json"
                           onChange={handleFileUpload}
                           disabled={isUploading}
                         />
