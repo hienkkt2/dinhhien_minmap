@@ -13,6 +13,8 @@ type NodeStyle = 'circle' | 'rect' | 'rounded';
 const MindMap: React.FC<MindMapProps> = ({ data, onUpdate }) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const [selectedNode, setSelectedNode] = useState<MindMapNode | null>(null);
+  const [selectedNodePos, setSelectedNodePos] = useState<{ x: number, y: number } | null>(null);
+  const [currentTransform, setCurrentTransform] = useState(d3.zoomIdentity);
   const [editValue, setEditValue] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [nodeStyle, setNodeStyle] = useState<NodeStyle>('rounded');
@@ -94,6 +96,7 @@ const MindMap: React.FC<MindMapProps> = ({ data, onUpdate }) => {
       .on("click", (event, d) => {
         event.stopPropagation();
         setSelectedNode(d.data);
+        setSelectedNodePos({ x: d.x, y: d.y });
         setEditValue(d.data.label);
         setIsEditing(false);
       });
@@ -197,6 +200,14 @@ const MindMap: React.FC<MindMapProps> = ({ data, onUpdate }) => {
         });
         g.selectAll(".node").attr("transform", (d: any) => `translate(${d.y},${d.x})`);
         updateLinks();
+        
+        // Update selected node position if it's being dragged
+        setSelectedNodePos(prev => {
+          if (prev && selectedNode?.id === d.data.id) {
+            return { x: d.x, y: d.y };
+          }
+          return prev;
+        });
       })
       .on("end", function() {
         d3.select(this).style("cursor", "grab");
@@ -241,6 +252,7 @@ const MindMap: React.FC<MindMapProps> = ({ data, onUpdate }) => {
       .scaleExtent([0.1, 5])
       .on("zoom", (event) => {
         g.attr("transform", event.transform);
+        setCurrentTransform(event.transform);
       });
 
     svg.call(zoom as any);
@@ -248,10 +260,12 @@ const MindMap: React.FC<MindMapProps> = ({ data, onUpdate }) => {
     // Initialize zoom to match initial transform
     const initialTransform = d3.zoomIdentity.translate(150, 300).scale(0.8);
     svg.call(zoom.transform as any, initialTransform);
+    setCurrentTransform(initialTransform);
 
     // Click on background to deselect
     svg.on("click", () => {
       setSelectedNode(null);
+      setSelectedNodePos(null);
       setIsEditing(false);
     });
 
@@ -271,10 +285,12 @@ const MindMap: React.FC<MindMapProps> = ({ data, onUpdate }) => {
       .scaleExtent([0.1, 5])
       .on("zoom", (event) => {
         d3.select(svgRef.current).select("g").attr("transform", event.transform);
+        setCurrentTransform(event.transform);
       });
     
     const initialTransform = d3.zoomIdentity.translate(160, 300).scale(0.8);
     svg.transition().duration(750).call(zoom.transform as any, initialTransform);
+    setCurrentTransform(initialTransform);
   };
 
   const updateNodeInTree = (root: MindMapNode, targetId: string, updater: (node: MindMapNode) => MindMapNode | null): MindMapNode | null => {
@@ -323,6 +339,20 @@ const MindMap: React.FC<MindMapProps> = ({ data, onUpdate }) => {
     const newData = updateNodeInTree(data, selectedNode.id, () => null);
     if (newData) onUpdate(newData);
     setSelectedNode(null);
+  };
+
+  const getMenuPosition = () => {
+    if (!selectedNodePos || !currentTransform) return { display: 'none' };
+    
+    // Apply D3 zoom transform to node coordinates
+    // d.y is horizontal, d.x is vertical in our tree layout
+    const [x, y] = currentTransform.apply([selectedNodePos.y, selectedNodePos.x]);
+    
+    return {
+      left: `${x}px`,
+      top: `${y}px`,
+      transform: 'translate(40px, -50%)', // Offset to the right of the node
+    };
   };
 
   return (
@@ -379,7 +409,10 @@ const MindMap: React.FC<MindMapProps> = ({ data, onUpdate }) => {
         
         {/* Floating Controls */}
         {selectedNode && (
-          <div className="absolute top-4 right-4 bg-white p-3 rounded-xl shadow-xl border border-slate-200 flex flex-col gap-2 min-w-[200px] animate-in fade-in slide-in-from-top-2 z-20">
+          <div 
+            className="absolute bg-white p-3 rounded-xl shadow-2xl border border-blue-100 flex flex-col gap-2 min-w-[180px] animate-in fade-in zoom-in-95 duration-200 z-30"
+            style={getMenuPosition() as React.CSSProperties}
+          >
             {isEditing ? (
               <div className="flex flex-col gap-2">
                 <input

@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   Brain, FileText, Layout, Send, Loader2, ChevronRight, Download, 
   Share2, Key, Eye, EyeOff, PanelLeftClose, PanelLeftOpen, 
-  History, Settings, Plus, Trash2, Clock, Save, X, FileUp
+  History, Settings, Plus, Trash2, Clock, Save, X, FileUp, Edit2, Check
 } from 'lucide-react';
 import { processContent, StructuredContent } from './services/geminiService';
 import MindMap from './components/MindMap';
@@ -28,6 +28,8 @@ export default function App() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [isApiKeySaved, setIsApiKeySaved] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [tempTitle, setTempTitle] = useState('');
 
   // Load data from localStorage on mount
   useEffect(() => {
@@ -45,12 +47,41 @@ export default function App() {
         console.error("Failed to load history", e);
       }
     }
+
+    const savedCurrentResult = localStorage.getItem('current_mindmap');
+    if (savedCurrentResult) {
+      try {
+        setResult(JSON.parse(savedCurrentResult));
+      } catch (e) {
+        console.error("Failed to load current mindmap", e);
+      }
+    }
   }, []);
 
   // Save history to localStorage whenever it changes
   useEffect(() => {
     localStorage.setItem('mindmap_history', JSON.stringify(history));
   }, [history]);
+
+  // Save current result to localStorage whenever it changes
+  useEffect(() => {
+    if (result) {
+      localStorage.setItem('current_mindmap', JSON.stringify(result));
+      
+      // Also update history if this result exists in history
+      setHistory(prev => {
+        const index = prev.findIndex(item => item.data.title === result.title);
+        if (index !== -1) {
+          const newHistory = [...prev];
+          newHistory[index] = { ...newHistory[index], data: result, timestamp: Date.now() };
+          return newHistory;
+        }
+        return prev;
+      });
+    } else {
+      localStorage.removeItem('current_mindmap');
+    }
+  }, [result]);
 
   const handleApiKeyChange = (val: string) => {
     setApiKey(val);
@@ -192,6 +223,26 @@ export default function App() {
       setIsUploading(false);
       // Reset input value to allow uploading the same file again
       e.target.value = '';
+    }
+  };
+
+  const handleUpdateMindMap = (newData: any) => {
+    if (result) {
+      setResult({ ...result, mindMapData: newData });
+    }
+  };
+
+  const handleStartEditTitle = () => {
+    if (result) {
+      setTempTitle(result.title);
+      setIsEditingTitle(true);
+    }
+  };
+
+  const handleSaveTitle = () => {
+    if (result && tempTitle.trim()) {
+      setResult({ ...result, title: tempTitle.trim() });
+      setIsEditingTitle(false);
     }
   };
 
@@ -428,7 +479,35 @@ export default function App() {
                         exit={{ opacity: 0, y: -20 }}
                         className="p-8 md:p-12"
                       >
-                        <h2 className="text-4xl font-extrabold text-slate-900 mb-10 tracking-tight">{result.title}</h2>
+                        <h2 className="text-4xl font-extrabold text-slate-900 mb-10 tracking-tight flex items-center gap-4 group">
+                          {isEditingTitle ? (
+                            <div className="flex items-center gap-2 w-full">
+                              <input
+                                type="text"
+                                value={tempTitle}
+                                onChange={(e) => setTempTitle(e.target.value)}
+                                onBlur={handleSaveTitle}
+                                onKeyDown={(e) => e.key === 'Enter' && handleSaveTitle()}
+                                autoFocus
+                                className="flex-1 bg-slate-50 border-b-2 border-blue-600 outline-none px-2 py-1"
+                              />
+                              <button onClick={handleSaveTitle} className="p-2 bg-blue-600 text-white rounded-lg">
+                                <Check className="w-5 h-5" />
+                              </button>
+                            </div>
+                          ) : (
+                            <>
+                              {result.title}
+                              <button 
+                                onClick={handleStartEditTitle}
+                                className="p-2 opacity-0 group-hover:opacity-100 hover:bg-slate-100 rounded-lg transition-all"
+                                title="Đổi tên sơ đồ"
+                              >
+                                <Edit2 className="w-5 h-5 text-slate-400" />
+                              </button>
+                            </>
+                          )}
+                        </h2>
                         <div className="space-y-12">
                           {result.sections.map((section, idx) => (
                             <div key={idx} className="relative pl-10 border-l-2 border-blue-100 group">
@@ -461,7 +540,7 @@ export default function App() {
                       >
                         <MindMap 
                           data={result.mindMapData} 
-                          onUpdate={(newData) => setResult({ ...result, mindMapData: newData })}
+                          onUpdate={handleUpdateMindMap}
                         />
                       </motion.div>
                     )}
