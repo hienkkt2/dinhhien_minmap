@@ -6,11 +6,12 @@ import { Plus, Trash2, Edit2, X, Check, Circle, Square, BoxSelect, ChevronDown, 
 interface MindMapProps {
   data: MindMapNode;
   onUpdate: (newData: MindMapNode) => void;
+  isFullscreen?: boolean;
 }
 
 type NodeStyle = 'circle' | 'rect' | 'rounded';
 
-const MindMap: React.FC<MindMapProps> = ({ data, onUpdate }) => {
+const MindMap: React.FC<MindMapProps> = ({ data, onUpdate, isFullscreen }) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const [selectedNode, setSelectedNode] = useState<MindMapNode | null>(null);
   const [selectedNodePos, setSelectedNodePos] = useState<{ x: number, y: number } | null>(null);
@@ -400,7 +401,9 @@ const MindMap: React.FC<MindMapProps> = ({ data, onUpdate }) => {
         </div>
       </div>
 
-      <div className="w-full h-[600px] bg-slate-50 rounded-xl border border-slate-200 overflow-hidden relative">
+      <div className={`w-full bg-slate-50 overflow-hidden relative transition-all duration-300 ${
+        isFullscreen ? 'h-[calc(100vh-140px)]' : 'h-[600px] rounded-xl border border-slate-200'
+      }`}>
         <svg
           ref={svgRef}
           viewBox="0 0 800 600"

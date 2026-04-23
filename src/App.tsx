@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   Brain, FileText, Layout, Send, Loader2, ChevronRight, Download, 
   Share2, Key, Eye, EyeOff, PanelLeftClose, PanelLeftOpen, 
-  History, Settings, Plus, Trash2, Clock, Save, X, FileUp, Edit2, Check
+  History, Settings, Plus, Trash2, Clock, Save, X, FileUp, Edit2, Check,
+  Maximize2, Minimize2
 } from 'lucide-react';
 import { processContent, StructuredContent } from './services/geminiService';
 import MindMap from './components/MindMap';
@@ -31,6 +32,7 @@ export default function App() {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [tempTitle, setTempTitle] = useState('');
   const [activeHistoryId, setActiveHistoryId] = useState<string | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Load data from localStorage on mount
   useEffect(() => {
@@ -342,28 +344,30 @@ export default function App() {
               <h1 className="text-lg font-bold tracking-tight hidden sm:block">Đình Hiển MindMap</h1>
             </div>
           </div>
-          <div className="flex items-center gap-2 sm:gap-4">
-            <button 
-              onClick={() => setIsConfigModalOpen(true)}
-              className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
-            >
-              <Settings className="w-4 h-4" />
-              <span className="hidden sm:inline">Cấu hình API</span>
-            </button>
-            <button className="text-slate-500 hover:text-slate-700 transition-colors p-2">
-              <Share2 className="w-5 h-5" />
-            </button>
-            <button className="bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-800 transition-all">
-              Pro
-            </button>
-          </div>
+          {!isFullscreen && (
+            <div className="flex items-center gap-2 sm:gap-4">
+              <button 
+                onClick={() => setIsConfigModalOpen(true)}
+                className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                <Settings className="w-4 h-4" />
+                <span className="hidden sm:inline">Cấu hình API</span>
+              </button>
+              <button className="text-slate-500 hover:text-slate-700 transition-colors p-2">
+                <Share2 className="w-5 h-5" />
+              </button>
+              <button className="bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-800 transition-all">
+                Pro
+              </button>
+            </div>
+          )}
         </div>
       </header>
 
       <main className="flex-1 flex overflow-hidden relative">
         {/* Left Sidebar: History & Input */}
         <AnimatePresence initial={false}>
-          {isSidebarOpen && (
+          {isSidebarOpen && !isFullscreen && (
             <motion.div
               initial={{ width: 0, opacity: 0 }}
               animate={{ width: 350, opacity: 1 }}
@@ -480,8 +484,8 @@ export default function App() {
         </AnimatePresence>
 
         {/* Main Content: Visualization */}
-        <div className="flex-1 overflow-y-auto bg-slate-50">
-          <div className="max-w-[1200px] mx-auto p-6 md:p-8">
+        <div className={`flex-1 overflow-y-auto bg-slate-50 transition-all duration-300 ${isFullscreen ? 'z-40 fixed inset-0' : ''}`}>
+          <div className={`mx-auto transition-all duration-300 ${isFullscreen ? 'w-full h-screen p-0' : 'max-w-[1200px] p-6 md:p-8'}`}>
             {!result && !loading && (
               <div className="h-[calc(100vh-160px)] flex flex-col items-center justify-center text-center p-12 bg-white rounded-3xl border-2 border-dashed border-slate-200">
                 <div className="bg-slate-50 p-6 rounded-full mb-6">
@@ -509,9 +513,9 @@ export default function App() {
               <motion.div
                 initial={{ opacity: 0, scale: 0.98 }}
                 animate={{ opacity: 1, scale: 1 }}
-                className="space-y-6"
+                className={`${isFullscreen ? 'h-full flex flex-col' : 'space-y-6'}`}
               >
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white p-3 rounded-2xl border border-slate-200 shadow-sm">
+                <div className={`flex flex-col sm:flex-row items-center justify-between gap-4 bg-white p-3 shadow-sm ${isFullscreen ? 'border-b border-slate-200' : 'rounded-2xl border border-slate-200'}`}>
                   <div className="flex p-1 bg-slate-100 rounded-xl">
                     <button
                       onClick={() => setActiveTab('structured')}
@@ -536,6 +540,18 @@ export default function App() {
                   </div>
                   <div className="flex items-center gap-2">
                     <button 
+                      onClick={() => setIsFullscreen(!isFullscreen)}
+                      className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl transition-colors border shadow-sm ${
+                        isFullscreen 
+                          ? 'bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100' 
+                          : 'text-slate-700 border-slate-200 hover:bg-slate-50 bg-white'
+                      }`}
+                      title={isFullscreen ? "Thu nhỏ" : "Toàn màn hình"}
+                    >
+                      {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+                      <span className="hidden sm:inline">{isFullscreen ? "Thu nhỏ" : "Toàn màn hình"}</span>
+                    </button>
+                    <button 
                       onClick={handleSaveToHistory}
                       className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-green-600 hover:bg-green-700 rounded-xl transition-colors shadow-sm shadow-green-100"
                     >
@@ -552,7 +568,7 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden min-h-[700px]">
+                <div className={`bg-white shadow-sm overflow-hidden flex-1 ${isFullscreen ? '' : 'rounded-3xl border border-slate-200 min-h-[700px]'}`}>
                   <AnimatePresence mode="wait">
                     {activeTab === 'structured' ? (
                       <motion.div
@@ -619,11 +635,12 @@ export default function App() {
                         initial={{ opacity: 0, scale: 0.95 }}
                         animate={{ opacity: 1, scale: 1 }}
                         exit={{ opacity: 0, scale: 1.05 }}
-                        className="p-6"
+                        className={isFullscreen ? 'p-0' : 'p-6'}
                       >
                         <MindMap 
                           data={result.mindMapData} 
                           onUpdate={handleUpdateMindMap}
+                          isFullscreen={isFullscreen}
                         />
                       </motion.div>
                     )}
